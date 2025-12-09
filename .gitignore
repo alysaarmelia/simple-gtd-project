@@ -1,0 +1,35 @@
+# --- 1. SECURITY (The most important part) ---
+.env
+password.txt
+keys/
+
+# --- 2. PYTHON JUNK (Compiled files) ---
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# --- 3. DATA & MEDIA (Git is for code, not data) ---
+*.csv
+*.xlsx
+*.zip
+*.gz
+minio_data/
+postgres_data/
+
+# --- 4. TOOL ARTIFACTS (Generated automatically) ---
+# Airflow logs grow infinitely
+logs/
+airflow-*.pid
+airflow.db
+
+# dbt generated files
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+
+# --- 5. IDE SETTINGS (Personal preferences) ---
+.idea/
+.vscode/
+*.swp

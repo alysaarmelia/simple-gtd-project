@@ -1,0 +1,9 @@
+version: 2
+
+sources:
+  - name: gtd_source
+    database: airflow
+    schema: public
+    tables:
+      - name: raw_gtd
+        description: "Raw terrorist attack data loaded from MinIO"

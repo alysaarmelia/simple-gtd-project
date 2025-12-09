@@ -1,0 +1,30 @@
+name: 'gtd_warehouse'
+version: '1.0.0'
+config-version: 2
+
+# This links your project to the credentials in 'profiles.yml'
+profile: 'gtd_profile'
+
+# These tell dbt where to find your files
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+analysis-paths: ["analyses"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+# --- MODEL CONFIGURATION ---
+# This section defines how tables are built in the database
+models:
+  gtd_warehouse:
+    # 1. Staging Layer: Clean data, but save space (Virtual Views)
+    staging:
+      +materialized: view
+      +schema: staging
+    
+    # 2. Warehouse Layer: Final data, needs high speed (Physical Tables)
+    warehouse:
+      +materialized: table
+      +schema: warehouse
