@@ -2,251 +2,226 @@ import pandas as pd
 import numpy as np
 from sqlalchemy import create_engine
 from xgboost import XGBRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 import logging
 import warnings
 
+# Matikan warning agar log bersih
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
 
-# ====== CONFIG 
+# ====== CONFIG ==================================================================
 DB_CONN = "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
 TARGET_TABLE = "investment_risk_predictions"
+# ================================================================================
 
-
-
-def run_risk_prediction_xgboost_yearly():
+def run_risk_prediction_comparison():
     logging.info("=" * 80)
-    logging.info("XGBoost Forecast – Yearly Attacks per Country (Data Warehouse)")
+    logging.info("🤖 AI BATTLE OPTIMIZED: XGBoost vs Random Forest")
     logging.info("=" * 80)
 
-    engine = create_engine(DB_CONN)
-
-    # STEP 1: LOAD DATA FROM WAREHOUSE (PER COUNTRY PER YEAR)
-
-    logging.info("\n[STEP 1] Loading aggregated attacks per country-year from warehouse...")
-
-    query = """
-    SELECT 
-        l.country_name,
-        d.year,
-        COUNT(f.incident_count) AS attack_count
-    FROM public_warehouse.fact_attacks f
-    JOIN public_warehouse.dim_location l ON f.location_id = l.location_id
-    JOIN public_warehouse.dim_date d ON f.date_id = d.date_id
-    GROUP BY l.country_name, d.year
-    ORDER BY l.country_name, d.year;
-    """
-
-    df = pd.read_sql(query, engine)
-
-    if df.empty:
-        logging.error("No data found from warehouse!")
-        return
-
-    logging.info(f"✓ Loaded {len(df)} rows (country-year level)")
-    logging.info("Sample:")
-    logging.info(df.head().to_string(index=False))
-
-
-    # STEP 2: LOOP PER COUNTRY – MIRIP gtd_xgboost_yearly, TAPI PER NEGARA
-    logging.info("\n[STEP 2] Running XGBoost yearly forecast per country...")
-
-    countries = df["country_name"].unique()
-    final_predictions = []
-    global_accuracies = []
-
-    for country in countries:
-        c_data = df[df["country_name"] == country].copy()
-
-        # minimal 10 tahun data
-        if len(c_data) < 10:
-            logging.info(f"[SKIP] {country} - kurang dari 10 tahun data.")
-            continue
-
-        # sort by year
-        c_data = c_data.sort_values("year")
-        logging.info(f"\n[COUNTRY] {country} – Years {c_data['year'].min()}–{c_data['year'].max()} ({len(c_data)} rows)")
-
-        # FEATURE ENGINEERING (mirip gtd_xgboost_yearly tapi per-country)
-        dfc = c_data.rename(columns={"attack_count": "annual_attacks"}).copy()
-
-        # Lags
-        dfc["attacks_lag1"] = dfc["annual_attacks"].shift(1)
-        dfc["attacks_lag2"] = dfc["annual_attacks"].shift(2)
-        dfc["attacks_lag3"] = dfc["annual_attacks"].shift(3)
-        dfc["attacks_lag5"] = dfc["annual_attacks"].shift(5)
-
-        # Rolling stats
-        dfc["mean_attacks_3y"] = dfc["annual_attacks"].rolling(3).mean()
-        dfc["mean_attacks_5y"] = dfc["annual_attacks"].rolling(5).mean()
-        dfc["std_attacks_3y"] = dfc["annual_attacks"].rolling(3).std()
-        dfc["std_attacks_5y"] = dfc["annual_attacks"].rolling(5).std()
-
-        # Trends
-        dfc["trend_2y"] = dfc["annual_attacks"] - dfc["annual_attacks"].shift(2)
-        dfc["trend_3y"] = dfc["annual_attacks"] - dfc["annual_attacks"].shift(3)
-
-        # Time encodings
-        dfc["year_scaled"] = (dfc["year"] - dfc["year"].min()) / (dfc["year"].max() - dfc["year"].min())
-        dfc["year_sin"] = np.sin(2 * np.pi * dfc["year_scaled"])
-        dfc["year_cos"] = np.cos(2 * np.pi * dfc["year_scaled"])
-
-        # Era flags sederhana global 
-        dfc["post_911"] = (dfc["year"] >= 2001).astype(int)
-        dfc["post_invasions"] = (dfc["year"] >= 2003).astype(int)
-        dfc["isis_era"] = ((dfc["year"] >= 2013) & (dfc["year"] <= 2019)).astype(int)
-
-        # Data quality
-        logging.info("[DATA QUALITY] NaN sebelum cleaning: %d", dfc.isna().sum().sum())
-        dfc = dfc.replace([np.inf, -np.inf], np.nan)
-        dfc = dfc.fillna(method="ffill").fillna(method="bfill")
-        dfc = dfc.dropna()
-        logging.info("[DATA QUALITY] NaN setelah cleaning: %d, rows: %d", dfc.isna().sum().sum(), len(dfc))
-
-        if len(dfc) < 10:
-            logging.info(f"[SKIP] {country} - data tersisa kurang dari 10 tahun setelah feature engineering.")
-            continue
-
-        feature_cols = [
-            "attacks_lag1","attacks_lag2","attacks_lag3","attacks_lag5",
-            "mean_attacks_3y","mean_attacks_5y","std_attacks_3y","std_attacks_5y",
-            "trend_2y","trend_3y",
-            "year_scaled","year_sin","year_cos",
-            "post_911","post_invasions","isis_era"
-        ]
-
-        # TARGET & TRAIN/TEST SPLIT MIRIP: TRAIN ≤ 2004, TEST > 2004
-        # Tapi threshold mengikuti negara tsb (misal train sampai 80% terakhir)
-
-        y_original = dfc["annual_attacks"].values.astype(float)
-        y = np.log1p(y_original) 
-        X = dfc[feature_cols]
-        years = dfc["year"].values.astype(int)
-
-        # Untuk konsistensi, kalau negara punya tahun 1970–2020:
-        # Train: sampai 80% pertama, Test: 20% terakhir (time-based)
-        n = len(dfc)
-        train_size = int(n * 0.8)
-        X_train = X.iloc[:train_size]
-        y_train = y[:train_size]
-        X_test = X.iloc[train_size:]
-        y_test = y[train_size:]
-        train_years = years[:train_size]
-        test_years = years[train_size:]
-        y_train_orig = y_original[:train_size]
-        y_test_orig = y_original[train_size:]
-
-        logging.info(f"Train years: {train_years.min()}–{train_years.max()} ({len(train_years)} tahun)")
-        logging.info(f"Test years:  {test_years.min()}–{test_years.max()} ({len(test_years)} tahun)")
-
-        if len(test_years) < 2:
-            logging.info(f"[SKIP] {country} - test set terlalu pendek.")
-            continue
-
-        # TRAIN XGBOOST
-        params = dict(
-            objective="reg:squarederror",
-            max_depth=4,
-            learning_rate=0.05,
-            n_estimators=300,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            min_child_weight=3,
-            gamma=1.0,
-            random_state=42,
-        )
-
-        model = XGBRegressor(**params)
-        model.fit(X_train, y_train)
-        logging.info("✓ Model trained for %s", country)
-
-        # EVALUATE (TRAIN & TEST)
-
-        y_train_pred_log = model.predict(X_train)
-        y_test_pred_log = model.predict(X_test)
-
-        y_train_pred = np.expm1(y_train_pred_log)
-        y_test_pred = np.expm1(y_test_pred_log)
-
-        y_train_pred = np.maximum(y_train_pred, 0)
-        y_test_pred = np.maximum(y_test_pred, 0)
-
-        def eval_metrics(y_true, y_pred, name):
-            mae = mean_absolute_error(y_true, y_pred)
-            rmse = np.sqrt(mean_squared_error(y_true, y_pred))
-            mape = np.mean(np.abs((y_true - y_pred) / (y_true + 1))) * 100.0
-            r2 = r2_score(y_true, y_pred)
-            logging.info(
-                f"[{name}] MAE: {mae:.2f} | RMSE: {rmse:.2f} | MAPE: {mape:.2f}% | R²: {r2:.4f}"
-            )
-            return mae, rmse, mape, r2
-
-        _, _, mape_train, _ = eval_metrics(y_train_orig, y_train_pred, "TRAIN")
-        _, _, mape_test, r2_test = eval_metrics(y_test_orig, y_test_pred, "TEST")
-
-        accuracy = max(0.0, 100.0 - mape_test)
-        global_accuracies.append(accuracy)
-
-        logging.info(
-            f"[EVAL][{country}] Test Accuracy ~ {accuracy:.1f}% (MAPE: {mape_test:.1f}%, R²: {r2_test:.3f})"
-        )
-
-        # PREDICT NEXT YEAR (FINAL FORECAST)
-        last_year = int(dfc["year"].max())
-        next_year = last_year + 1
-
-        # train final model 
-        model_final = XGBRegressor(**params)
-        model_final.fit(X, y)
-
-        next_features = dfc.iloc[-1:].copy()
-        next_features["year"] = next_year
-        next_features["year_scaled"] = (next_year - dfc["year"].min()) / (dfc["year"].max() - dfc["year"].min())
-        next_features["year_sin"] = np.sin(2 * np.pi * next_features["year_scaled"])
-        next_features["year_cos"] = np.cos(2 * np.pi * next_features["year_scaled"])
-        next_features["post_911"] = 1 if next_year >= 2001 else 0
-        next_features["post_invasions"] = 1 if next_year >= 2003 else 0
-        next_features["isis_era"] = 1 if (2013 <= next_year <= 2019) else 0
-
-        X_next = next_features[feature_cols]
-        next_pred_log = model_final.predict(X_next)[0]
-        next_pred = float(np.expm1(next_pred_log))
-        if next_pred < 0:
-            next_pred = 0.0
-
-        # risk_score simpel: clamp ke 0–100
-        risk_score = next_pred
-        if risk_score < 0:
-            risk_score = 0.0
-        if risk_score > 100:
-            risk_score = 100.0
-
-        final_predictions.append({
-            "country_name": country,
-            "prediction_year": int(next_year),
-            "predicted_attacks": round(next_pred, 2),
-            "risk_score": round(risk_score, 2),
-            "model_accuracy": round(accuracy, 2),
-        })
-
-    # GLOBAL SUMMARY & SAVE
-    if global_accuracies:
-        avg_acc = np.mean(global_accuracies)
-        logging.info("================================================")
-        logging.info(f"RATA-RATA AKURASI TEST (XGBoost, per-country): {avg_acc:.2f}%")
-        logging.info("================================================")
-    else:
-        logging.warning("Tidak ada model dengan test set yang valid.")
-
-    if final_predictions:
-        pred_df = pd.DataFrame(final_predictions)
+    try:
         engine = create_engine(DB_CONN)
-        pred_df.to_sql(TARGET_TABLE, engine, if_exists="replace", index=False)
-        logging.info(f"Predictions saved to table '{TARGET_TABLE}'.")
-    else:
-        logging.warning("No predictions generated; nothing saved to DB.")
 
+        # ------------------------------------------------------------------
+        # STEP 1: LOAD DATA
+        # ------------------------------------------------------------------
+        query = """
+        SELECT 
+            l.country_name,
+            d.year,
+            COUNT(f.incident_count) AS attack_count
+        FROM public_warehouse.fact_attacks f
+        JOIN public_warehouse.dim_location l ON f.location_id = l.location_id
+        JOIN public_warehouse.dim_date d ON f.date_id = d.date_id
+        GROUP BY l.country_name, d.year
+        ORDER BY l.country_name, d.year;
+        """
+        df = pd.read_sql(query, engine)
+
+        if df.empty:
+            logging.error("No data found from warehouse!")
+            return
+
+        # ------------------------------------------------------------------
+        # STEP 2: LOOP PER COUNTRY & BATTLE
+        # ------------------------------------------------------------------
+        countries = df["country_name"].unique()
+        final_predictions = []
+        
+        # Scoreboard Wins
+        wins_xgb = 0
+        wins_rf = 0
+
+        logging.info(f"Starting optimized comparison for {len(countries)} countries...")
+
+        for country in countries:
+            c_data = df[df["country_name"] == country].copy()
+            
+            # Skip jika data terlalu sedikit (<10 tahun)
+            if len(c_data) < 10: continue
+
+            c_data = c_data.sort_values("year")
+            
+            # --- FEATURE ENGINEERING (DITINGKATKAN) ---
+            dfc = c_data.rename(columns={"attack_count": "annual_attacks"}).copy()
+
+            # [FIX KRUSIAL DISINI]: Paksa konversi ke Float agar tidak dianggap Object/Decimal
+            dfc["annual_attacks"] = dfc["annual_attacks"].astype(float)
+            dfc["year"] = dfc["year"].astype(int)
+            
+            # 1. Lags (Masa Lalu)
+            dfc["attacks_lag1"] = dfc["annual_attacks"].shift(1)
+            dfc["attacks_lag2"] = dfc["annual_attacks"].shift(2)
+            dfc["attacks_lag3"] = dfc["annual_attacks"].shift(3)
+            
+            # 2. Rolling Stats (Rata-rata Bergerak)
+            dfc["mean_3y"] = dfc["annual_attacks"].rolling(3).mean()
+            dfc["std_3y"] = dfc["annual_attacks"].rolling(3).std()
+            
+            # 3. Trends (Momentum)
+            dfc["trend_1y"] = dfc["annual_attacks"].shift(1) - dfc["annual_attacks"].shift(2)
+            
+            # 4. Time Encoding
+            dfc["year_scaled"] = (dfc["year"] - dfc["year"].min()) / (dfc["year"].max() - dfc["year"].min())
+
+            # Hapus NaN akibat shifting
+            dfc = dfc.dropna()
+            if len(dfc) < 10: continue
+
+            features = ["attacks_lag1", "attacks_lag2", "attacks_lag3", "mean_3y", "std_3y", "trend_1y", "year_scaled"]
+            
+            # --- SPLIT TRAIN / TEST ---
+            n = len(dfc)
+            train_size = int(n * 0.8)
+            
+            X = dfc[features]
+            # Log Transform
+            y = np.log1p(dfc["annual_attacks"].values) 
+            
+            X_train, X_test = X.iloc[:train_size], X.iloc[train_size:]
+            y_train, y_test = y[:train_size], y[train_size:]
+            
+            if len(X_test) < 1: continue
+
+            y_test_real = np.expm1(y_test)
+
+            # ==========================================================
+            # ROUND 1: XGBOOST (TUNED)
+            # ==========================================================
+            model_xgb = XGBRegressor(
+                n_estimators=1000,      
+                learning_rate=0.01,     
+                max_depth=3,            
+                subsample=0.7,          
+                colsample_bytree=0.7,   
+                random_state=42,
+                n_jobs=-1
+            )
+            model_xgb.fit(X_train, y_train)
+            pred_xgb = np.expm1(model_xgb.predict(X_test))
+            
+            mape_xgb = np.mean(np.abs((y_test_real - pred_xgb) / (y_test_real + 1))) * 100
+            acc_xgb = max(0, 100 - mape_xgb)
+
+            # ==========================================================
+            # ROUND 2: RANDOM FOREST (TUNED)
+            # ==========================================================
+            model_rf = RandomForestRegressor(
+                n_estimators=500,       
+                max_depth=5,            
+                min_samples_leaf=2,     
+                random_state=42,
+                n_jobs=-1
+            )
+            model_rf.fit(X_train, y_train)
+            pred_rf = np.expm1(model_rf.predict(X_test))
+
+            mape_rf = np.mean(np.abs((y_test_real - pred_rf) / (y_test_real + 1))) * 100
+            acc_rf = max(0, 100 - mape_rf)
+
+            # ==========================================================
+            # TENTUKAN PEMENANG
+            # ==========================================================
+            if acc_xgb >= acc_rf:
+                winner_model = "XGBoost"
+                winner_acc = acc_xgb
+                final_model = model_xgb
+                wins_xgb += 1
+            else:
+                winner_model = "Random Forest"
+                winner_acc = acc_rf
+                final_model = model_rf
+                wins_rf += 1
+
+            # ==========================================================
+            # FINAL FORECAST
+            # ==========================================================
+            # Train ulang model pemenang dengan SEMUA data
+            final_model.fit(X, y)
+            
+            next_year = int(dfc["year"].max()) + 1
+            last_row = dfc.iloc[-1:].copy()
+            
+            # Siapkan fitur tahun depan (Shift manual)
+            next_feats_dict = {
+                "attacks_lag1": last_row["annual_attacks"],         
+                "attacks_lag2": last_row["attacks_lag1"],
+                "attacks_lag3": last_row["attacks_lag2"],
+                "mean_3y": (last_row["annual_attacks"] + last_row["attacks_lag1"] + last_row["attacks_lag2"]) / 3,
+                "std_3y": np.std([last_row["annual_attacks"], last_row["attacks_lag1"], last_row["attacks_lag2"]]),
+                "trend_1y": last_row["annual_attacks"] - last_row["attacks_lag1"],
+                "year_scaled": (next_year - c_data["year"].min()) / (c_data["year"].max() - c_data["year"].min())
+            }
+            next_feats = pd.DataFrame([next_feats_dict])
+            
+            # Pastikan urutan kolom sama dan tipe data float
+            next_feats = next_feats[features].astype(float)
+            
+            pred_log = final_model.predict(next_feats)[0]
+            pred_val = float(np.expm1(pred_log))
+            
+            risk_score = min(max(pred_val, 0), 100)
+            if pred_val > 50: risk_score = 100
+
+            final_predictions.append({
+                "country_name": country,
+                "prediction_year": next_year,
+                "predicted_attacks": round(pred_val, 2),
+                "risk_score": round(risk_score, 2),
+                "xgb_accuracy": round(acc_xgb, 2), 
+                "rf_accuracy": round(acc_rf, 2),
+                "winner_accuracy": round(winner_acc, 2),
+                "model_used": winner_model
+            })
+
+        # ------------------------------------------------------------------
+        # STEP 3: SUMMARY & SAVE
+        # ------------------------------------------------------------------
+        if final_predictions:
+            df_save = pd.DataFrame(final_predictions)
+            
+            avg_xgb = df_save['xgb_accuracy'].mean()
+            avg_rf = df_save['rf_accuracy'].mean()
+
+            logging.info("=" * 60)
+            logging.info(f"🏆 FINAL BATTLE SCOREBOARD (OPTIMIZED)")
+            logging.info(f"   XGBoost Wins      : {wins_xgb}")
+            logging.info(f"   Random Forest Wins: {wins_rf}")
+            logging.info("-" * 60)
+            logging.info(f"📊 GLOBAL AVERAGE ACCURACY")
+            logging.info(f"   XGBoost       : {avg_xgb:.2f}%")
+            logging.info(f"   Random Forest : {avg_rf:.2f}%")
+            logging.info("=" * 60)
+            
+            df_save.to_sql(TARGET_TABLE, engine, if_exists="replace", index=False)
+            logging.info(f"✅ Success! Predictions saved to '{TARGET_TABLE}'.")
+        else:
+            logging.warning("⚠️ No predictions generated.")
+
+    except Exception as e:
+        logging.error(f"❌ Error in pipeline: {e}")
 
 if __name__ == "__main__":
-    run_risk_prediction_xgboost_yearly()
+    run_risk_prediction_comparison()
