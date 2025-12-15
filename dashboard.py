@@ -3,9 +3,8 @@ import pandas as pd
 from sqlalchemy import create_engine
 import plotly.express as px
 
-# ------------------------------------------------------------------
 # 1. KONFIGURASI HALAMAN & KONEKSI
-# ------------------------------------------------------------------
+
 st.set_page_config(
     page_title="GTD Analytics",
     page_icon="🌍",
@@ -22,7 +21,7 @@ DB_CONN = "postgresql+psycopg2://airflow:airflow@localhost:5432/airflow"
 def load_data():
     engine = create_engine(DB_CONN)
     
-    # A. TREND TAHUNAN (Fact + Dim Date)
+    # A. TREND TAHUNAN 
     sql_trend = """
     SELECT 
         d.year,
@@ -35,7 +34,7 @@ def load_data():
     ORDER BY d.year;
     """
     
-    # B. PETA SEBARAN (Fact + Dim Location)
+    # B. PETA SEBARAN 
     sql_map = """
     SELECT 
         l.latitude,
@@ -51,7 +50,7 @@ def load_data():
     LIMIT 2000;
     """
     
-    # C. ANALISIS INVESTASI (Data Mart: Economy + Attacks)
+    # C. ANALISIS INVESTASI 
     sql_mart = """
     SELECT 
         country_name, 
@@ -64,7 +63,7 @@ def load_data():
     ORDER BY property_index DESC;
     """
 
-    # D. PREDIKSI MACHINE LEARNING (Tabel Hasil Python Script)
+    # D. PREDIKSI MACHINE LEARNING 
     sql_pred = """
     SELECT * FROM public.investment_risk_predictions 
     ORDER BY risk_score DESC;
@@ -75,7 +74,6 @@ def load_data():
         df_map = pd.read_sql(sql_map, engine)
         df_mart = pd.read_sql(sql_mart, engine)
         
-        # Coba load prediksi, jika tabel belum ada (script ML belum jalan), return kosong
         try:
             df_pred = pd.read_sql(sql_pred, engine)
         except:
@@ -92,16 +90,15 @@ df_trend, df_map, df_mart, df_pred = load_data()
 if df_trend is None:
     st.stop()
 
-# ------------------------------------------------------------------
-# 2. KPI GLOBAL (Selalu Muncul di Atas)
-# ------------------------------------------------------------------
+# 2. KPI GLOBAL 
+
 col1, col2, col3, col4 = st.columns(4)
 
 total_attacks = df_trend['total_attacks'].sum()
 total_killed = df_trend['total_killed'].sum()
 most_dangerous_year = df_trend.loc[df_trend['total_attacks'].idxmax()]['year']
 
-# Ambil negara teraman dari prediksi (jika ada)
+# Ambil negara teraman dari prediksi 
 if not df_pred.empty:
     safest = df_pred.iloc[-1]['country_name']
 else:
@@ -118,14 +115,12 @@ with col4:
 
 st.divider()
 
-# ------------------------------------------------------------------
 # 3. TABS NAVIGATION
-# ------------------------------------------------------------------
+
 tab_overview, tab_forecast = st.tabs(["📊 Overview & Historical", "🤖 AI Forecast & Risk"])
 
-# ==================================================================
-# TAB 1: OVERVIEW & HISTORICAL (Dashboard Lama)
-# ==================================================================
+# TAB 1: OVERVIEW & HISTORICAL 
+
 with tab_overview:
     col_left, col_right = st.columns([2, 1])
 
@@ -166,9 +161,8 @@ with tab_overview:
     st.subheader("🗺️ Peta Lokasi Serangan (Live Data)")
     st.map(df_map, latitude='latitude', longitude='longitude', size='killed', color='#ff0000')
 
-# ==================================================================
-# TAB 2: AI FORECAST (Tab Baru)
-# ==================================================================
+# TAB 2: AI FORECAST 
+
 with tab_forecast:
     if df_pred.empty:
         st.warning("⚠️ Belum ada data prediksi. Pastikan pipeline ML (risk_model.py) sudah dijalankan.")
@@ -176,7 +170,6 @@ with tab_forecast:
         pred_year = int(df_pred['prediction_year'].iloc[0])
         st.header(f"🤖 Prediksi Risiko Tahun {pred_year} (XGBoost Model)")
         
-        # --- Metrics Baris Atas ---
         m1, m2, m3 = st.columns(3)
         avg_acc = df_pred['model_accuracy'].mean()
         high_risk_count = df_pred[df_pred['risk_score'] > 80].shape[0]
@@ -189,8 +182,7 @@ with tab_forecast:
             st.metric("Model Used", "XGBoost Regressor")
             
         st.divider()
-
-        # --- Visualisasi Utama ---
+        
         c1, c2 = st.columns([2, 1])
         
         with c1:

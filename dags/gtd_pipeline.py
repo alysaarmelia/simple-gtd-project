@@ -13,17 +13,15 @@ import logging
 import sys
 import os
 
-# --- 1. IMPORT UTILS & ML SCRIPT ---
 sys.path.append('/opt/airflow/ml_script')
-# Tambahkan path folder dags agar bisa import utils_alerting
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Import Callback Lokal
 try:
     from utils_alerting import audit_success_callback, audit_failure_callback
 except ImportError as e:
     logging.error(f"Gagal import utils_alerting: {e}")
-    # Dummy function agar tidak crash jika file hilang
+
     def audit_success_callback(context): pass
     def audit_failure_callback(context): pass
 
@@ -34,7 +32,6 @@ except ImportError as e:
     def run_risk_prediction():
         logging.error("Model script not found!")
 
-# --- 2. CONFIGURATION ---
 MINIO_CONN_ID = 'minio_conn'
 POSTGRES_CONN_ID = 'postgres_conn'
 BUCKET_NAME = 'raw-data'
@@ -45,7 +42,6 @@ FILE_KEY_PROP = 'oecd_property.csv'
 TABLE_NAME_GTD = 'raw_gtd'            
 TABLE_NAME_PROP = 'raw_property_index' 
 
-# --- 3. EXTRACT & LOAD FUNCTIONS ---
 
 def load_minio_to_postgres_gtd(**kwargs):
     s3_hook = S3Hook(aws_conn_id=MINIO_CONN_ID)
@@ -134,12 +130,11 @@ def ingest_oecd_property_data(**kwargs):
     df.to_sql(TABLE_NAME_PROP, engine, if_exists='replace', index=False)
     logging.info("Success! Data saved to Postgres.")
 
-# --- 4. THE DAG DEFINITION ---
 default_args = {
     'owner': 'airflow',
     'start_date': days_ago(1),
     'retries': 1,
-    # --- PASANG CALLBACK LOKAL DISINI ---
+
     'on_success_callback': audit_success_callback,
     'on_failure_callback': audit_failure_callback
 }

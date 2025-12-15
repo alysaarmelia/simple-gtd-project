@@ -9,10 +9,10 @@ import warnings
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
 
-# ====== CONFIG ==================================================================
+# ====== CONFIG 
 DB_CONN = "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
 TARGET_TABLE = "investment_risk_predictions"
-# ================================================================================
+
 
 
 def run_risk_prediction_xgboost_yearly():
@@ -22,9 +22,8 @@ def run_risk_prediction_xgboost_yearly():
 
     engine = create_engine(DB_CONN)
 
-    # ======================================================================
     # STEP 1: LOAD DATA FROM WAREHOUSE (PER COUNTRY PER YEAR)
-    # ======================================================================
+
     logging.info("\n[STEP 1] Loading aggregated attacks per country-year from warehouse...")
 
     query = """
@@ -49,9 +48,8 @@ def run_risk_prediction_xgboost_yearly():
     logging.info("Sample:")
     logging.info(df.head().to_string(index=False))
 
-    # ======================================================================
+
     # STEP 2: LOOP PER COUNTRY – MIRIP gtd_xgboost_yearly, TAPI PER NEGARA
-    # ======================================================================
     logging.info("\n[STEP 2] Running XGBoost yearly forecast per country...")
 
     countries = df["country_name"].unique()
@@ -70,9 +68,7 @@ def run_risk_prediction_xgboost_yearly():
         c_data = c_data.sort_values("year")
         logging.info(f"\n[COUNTRY] {country} – Years {c_data['year'].min()}–{c_data['year'].max()} ({len(c_data)} rows)")
 
-        # ==================================================================
         # FEATURE ENGINEERING (mirip gtd_xgboost_yearly tapi per-country)
-        # ==================================================================
         dfc = c_data.rename(columns={"attack_count": "annual_attacks"}).copy()
 
         # Lags
@@ -96,7 +92,7 @@ def run_risk_prediction_xgboost_yearly():
         dfc["year_sin"] = np.sin(2 * np.pi * dfc["year_scaled"])
         dfc["year_cos"] = np.cos(2 * np.pi * dfc["year_scaled"])
 
-        # Era flags sederhana global (boleh dihapus kalau tidak relevan)
+        # Era flags sederhana global 
         dfc["post_911"] = (dfc["year"] >= 2001).astype(int)
         dfc["post_invasions"] = (dfc["year"] >= 2003).astype(int)
         dfc["isis_era"] = ((dfc["year"] >= 2013) & (dfc["year"] <= 2019)).astype(int)
@@ -120,12 +116,11 @@ def run_risk_prediction_xgboost_yearly():
             "post_911","post_invasions","isis_era"
         ]
 
-        # ==================================================================
         # TARGET & TRAIN/TEST SPLIT MIRIP: TRAIN ≤ 2004, TEST > 2004
-        # Tapi di sini threshold mengikuti negara tsb (misal train sampai 80% terakhir)
-        # ==================================================================
+        # Tapi threshold mengikuti negara tsb (misal train sampai 80% terakhir)
+
         y_original = dfc["annual_attacks"].values.astype(float)
-        y = np.log1p(y_original)  # log(1 + y) seperti script VS Code
+        y = np.log1p(y_original) 
         X = dfc[feature_cols]
         years = dfc["year"].values.astype(int)
 
@@ -149,9 +144,7 @@ def run_risk_prediction_xgboost_yearly():
             logging.info(f"[SKIP] {country} - test set terlalu pendek.")
             continue
 
-        # ==================================================================
         # TRAIN XGBOOST
-        # ==================================================================
         params = dict(
             objective="reg:squarederror",
             max_depth=4,
@@ -168,9 +161,8 @@ def run_risk_prediction_xgboost_yearly():
         model.fit(X_train, y_train)
         logging.info("✓ Model trained for %s", country)
 
-        # ==================================================================
         # EVALUATE (TRAIN & TEST)
-        # ==================================================================
+
         y_train_pred_log = model.predict(X_train)
         y_test_pred_log = model.predict(X_test)
 
@@ -200,13 +192,11 @@ def run_risk_prediction_xgboost_yearly():
             f"[EVAL][{country}] Test Accuracy ~ {accuracy:.1f}% (MAPE: {mape_test:.1f}%, R²: {r2_test:.3f})"
         )
 
-        # ==================================================================
         # PREDICT NEXT YEAR (FINAL FORECAST)
-        # ==================================================================
         last_year = int(dfc["year"].max())
         next_year = last_year + 1
 
-        # train final model on all dfc
+        # train final model 
         model_final = XGBRegressor(**params)
         model_final.fit(X, y)
 
@@ -240,9 +230,7 @@ def run_risk_prediction_xgboost_yearly():
             "model_accuracy": round(accuracy, 2),
         })
 
-    # ======================================================================
     # GLOBAL SUMMARY & SAVE
-    # ======================================================================
     if global_accuracies:
         avg_acc = np.mean(global_accuracies)
         logging.info("================================================")

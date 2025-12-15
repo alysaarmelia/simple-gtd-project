@@ -7,7 +7,7 @@ select
     year,
     real_house_price_index as property_index,
 
-    -- 2. Cleaning Nama Negara (Contoh jika ada perbedaan)
+    -- 2. Cleaning Nama Negara 
     case 
         when country = 'United States of America' then 'United States'
         when country = 'Korea' then 'South Korea'

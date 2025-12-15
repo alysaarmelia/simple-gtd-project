@@ -1,7 +1,7 @@
 {{ config(materialized='table') }}
 
 with security_metrics as (
-    -- 1. Agregasi Fact Attacks (Dari level Kota -> diringkas ke Negara)
+
     select 
         l.country_name,
         d.year,
@@ -14,7 +14,7 @@ with security_metrics as (
 ),
 
 economic_metrics as (
-    -- 2. Ambil dari Fact Economy yang baru dibuat
+
     select 
         country_name,
         year,
@@ -23,7 +23,6 @@ economic_metrics as (
 ),
 
 final as (
-    -- 3. Gabungkan kedua Fact Table
     select
         s.country_name,
         s.year,

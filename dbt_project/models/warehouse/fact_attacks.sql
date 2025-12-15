@@ -6,7 +6,6 @@ with source as (
 
 final as (
     select
-        -- Foreign Keys ke Dimensi (Perbaikan sintaks disini)
         {{ dbt_utils.generate_surrogate_key(['year', 'month', 'day']) }} as date_id,
         {{ dbt_utils.generate_surrogate_key(['country_name', 'region_name', 'city_name', 'latitude', 'longitude']) }} as location_id,
         {{ dbt_utils.generate_surrogate_key(['attack_type']) }} as attack_id,
@@ -15,10 +14,8 @@ final as (
         {{ dbt_utils.generate_surrogate_key(['weapon_type']) }} as weapon_id,
         {{ dbt_utils.generate_surrogate_key(['event_id']) }} as narrative_id,
 
-        -- Degenerate Dimension
         event_id,
 
-        -- Metrics
         killed,
         wounded,
         (killed + wounded) as total_casualties,

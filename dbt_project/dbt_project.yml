@@ -2,10 +2,9 @@ name: 'gtd_warehouse'
 version: '1.0.0'
 config-version: 2
 
-# This links your project to the credentials in 'profiles.yml'
 profile: 'gtd_profile'
 
-# These tell dbt where to find your files
+# dbt where to find files
 model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
@@ -18,18 +17,17 @@ clean-targets: ["target", "dbt_packages"]
 # --- MODEL CONFIGURATION ---
 models:
   gtd_warehouse:
-    # 1. Staging Layer: Clean data, but save space (Virtual Views)
+    # 1. Staging Layer: Clean data
     staging:
       +materialized: view
       +schema: staging
     
-    # 2. Warehouse Layer: Final data, needs high speed (Physical Tables)
+    # 2. Warehouse Layer: Final data
     warehouse:
       +materialized: table
       +schema: warehouse
 
-    # 3. Marts Layer: Business Ready Data (Physical Tables)
-    # Tambahkan bagian ini:
+    # 3. Marts Layer: Business Ready Data
     marts:
       +materialized: table
       +schema: marts
