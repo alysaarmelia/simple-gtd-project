@@ -3,9 +3,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 import plotly.express as px
 
-# ------------------------------------------------------------------
 # 1. KONFIGURASI HALAMAN & KONEKSI
-# ------------------------------------------------------------------
 st.set_page_config(
     page_title="GTD Analytics",
     page_icon="🌍",
@@ -91,9 +89,7 @@ df_trend, df_map, df_mart, df_pred = load_data()
 if df_trend is None:
     st.stop()
 
-# ------------------------------------------------------------------
 # 2. KPI GLOBAL
-# ------------------------------------------------------------------
 col1, col2, col3, col4 = st.columns(4)
 
 total_attacks = df_trend['total_attacks'].sum()
@@ -112,14 +108,10 @@ with col4: st.metric("Negara Teraman (Forecast)", safest)
 
 st.divider()
 
-# ------------------------------------------------------------------
 # 3. TABS NAVIGATION
-# ------------------------------------------------------------------
 tab_overview, tab_forecast = st.tabs(["📊 Overview & Historical", "🤖 AI Forecast & Comparison"])
 
-# ==================================================================
 # TAB 1: OVERVIEW & HISTORICAL
-# ==================================================================
 with tab_overview:
     col_left, col_right = st.columns([2, 1])
 
@@ -154,14 +146,12 @@ with tab_overview:
     st.subheader("🗺️ Peta Lokasi Serangan (Live Data)")
     st.map(df_map, latitude='latitude', longitude='longitude', size='killed', color='#ff0000')
 
-# ==================================================================
 # TAB 2: AI FORECAST & COMPARISON
-# ==================================================================
 with tab_forecast:
     if df_pred.empty:
         st.warning("⚠️ Belum ada data prediksi. Pastikan pipeline ML (risk_model.py) sudah dijalankan.")
     else:
-        # Cek apakah kolom akurasi tersedia (untuk kompatibilitas)
+        # Kolom akurasi tersedia (untuk kompatibilitas)
         cols = df_pred.columns
         has_metrics = 'xgb_accuracy' in cols and 'rf_accuracy' in cols
         
@@ -229,12 +219,11 @@ with tab_forecast:
         with c2:
             st.subheader("📋 Detail Prediksi & Akurasi")
             
-            # Pilih kolom yang mau ditampilkan
             show_cols = ['country_name', 'risk_score', 'predicted_attacks', 'model_used']
             if 'winner_accuracy' in cols:
                 show_cols.append('winner_accuracy')
             elif 'model_accuracy' in cols:
-                show_cols.append('model_accuracy') # Fallback ke nama lama jika perlu
+                show_cols.append('model_accuracy')
 
             st.dataframe(
                 df_pred[show_cols],
