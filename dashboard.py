@@ -56,13 +56,17 @@ def load_data():
     ORDER BY d.year DESC, d.month DESC
     LIMIT 2000;
     """
-    
-    # C. QUERY PREDIKSI RISIKO (Hasil Machine Learning)
-    # Mengambil hasil dari tabel prediksi yang dibuat oleh script Python Anda
+   # C. QUERY ANALISIS RISIKO (Dari Data Mart: Fact Economy + Fact Attacks)
     sql_ml = """
-    SELECT country_name, prediction_year, risk_score, predicted_attacks 
-    FROM public.investment_risk_predictions 
-    ORDER BY risk_score DESC;
+    SELECT 
+        country_name, 
+        year, 
+        investment_signal, -- Kolom baru hasil logika dbt
+        property_index,    -- Data ekonomi dari OECD
+        total_attacks      -- Data keamanan dari GTD
+    FROM public.mart_risk_analysis 
+    WHERE year = (SELECT MAX(year) FROM public.mart_risk_analysis) -- Ambil tahun terakhir saja
+    ORDER BY property_index DESC;
     """
     
     try:
@@ -126,24 +130,26 @@ with col_left:
         st.plotly_chart(fig_killed, use_container_width=True)
 
 with col_right:
-    st.subheader("🤖 Prediksi Risiko Investasi")
-    st.caption(f"Prediksi untuk tahun {int(df_ml['prediction_year'].iloc[0])}")
+    st.subheader("💡 Sinyal Investasi (Data Mart)")
     
-    # Menampilkan tabel dengan highlight warna
-    st.dataframe(
-        df_ml[['country_name', 'risk_score']],
-        column_config={
-            "risk_score": st.column_config.ProgressColumn(
-                "Risk Score (0-100)",
-                format="%d",
-                min_value=0,
-                max_value=100,
-            ),
-        },
-        hide_index=True,
-        use_container_width=True,
-        height=400
-    )
+    if not df_ml.empty:
+        latest_year = int(df_ml['year'].iloc[0])
+        st.caption(f"Analisis Gabungan Keamanan & Ekonomi (Tahun {latest_year})")
+        
+        # Menampilkan tabel Mart
+        st.dataframe(
+            df_ml[['country_name', 'investment_signal', 'property_index', 'total_attacks']],
+            column_config={
+                "investment_signal": "Rekomendasi",
+                "property_index": st.column_config.NumberColumn("Indeks Properti", format="%.2f"),
+                "total_attacks": "Jml Serangan"
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=400
+        )
+    else:
+        st.warning("Belum ada data di Mart Risk Analysis.")
 
 # ------------------------------------------------------------------
 # 4. PETA INTERAKTIF

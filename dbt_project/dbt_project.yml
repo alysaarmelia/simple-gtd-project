@@ -16,7 +16,6 @@ target-path: "target"
 clean-targets: ["target", "dbt_packages"]
 
 # --- MODEL CONFIGURATION ---
-# This section defines how tables are built in the database
 models:
   gtd_warehouse:
     # 1. Staging Layer: Clean data, but save space (Virtual Views)
@@ -28,3 +27,9 @@ models:
     warehouse:
       +materialized: table
       +schema: warehouse
+
+    # 3. Marts Layer: Business Ready Data (Physical Tables)
+    # Tambahkan bagian ini:
+    marts:
+      +materialized: table
+      +schema: marts

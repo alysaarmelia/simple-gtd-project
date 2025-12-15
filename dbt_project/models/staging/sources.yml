@@ -7,3 +7,7 @@ sources:
     tables:
       - name: raw_gtd
         description: "Raw terrorist attack data loaded from MinIO"
+      
+      # --- Bagian ini yang WAJIB ada untuk mengatasi error ---
+      - name: raw_property_index
+        description: "OECD Real House Price Index loaded from API"
