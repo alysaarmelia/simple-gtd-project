@@ -36,6 +36,8 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      # --- FIX 403 ERROR ---
+      - AIRFLOW__WEBSERVER__SECRET_KEY=my_very_secret_key_fix_403
     volumes:
       - ./dags:/opt/airflow/dags
       - ./ml_script:/opt/airflow/ml_script
@@ -53,6 +55,8 @@ services:
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      # --- FIX 403 ERROR (Harus sama dengan webserver) ---
+      - AIRFLOW__WEBSERVER__SECRET_KEY=my_very_secret_key_fix_403
     volumes:
       - ./dags:/opt/airflow/dags
       - ./ml_script:/opt/airflow/ml_script
