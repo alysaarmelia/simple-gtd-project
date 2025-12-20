@@ -127,9 +127,16 @@ def ingest_oecd_property_data(**kwargs):
     logging.info(f"=== LOAD: SAVING TO POSTGRES ({TABLE_NAME_PROP}) ===")
     pg_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     engine = pg_hook.get_sqlalchemy_engine()
-    df.to_sql(TABLE_NAME_PROP, engine, if_exists='replace', index=False)
-    logging.info("Success! Data saved to Postgres.")
 
+    # --- PERBAIKAN: Gunakan DROP CASCADE untuk menghapus dependensi View dbt ---
+    logging.info(f"Dropping table {TABLE_NAME_PROP} with CASCADE if exists...")
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(f"DROP TABLE IF EXISTS {TABLE_NAME_PROP} CASCADE;")
+
+    # Gunakan if_exists='append' karena tabel sudah dihapus secara manual di atas
+    df.to_sql(TABLE_NAME_PROP, engine, if_exists='append', index=False)
+    logging.info("Success! Data saved to Postgres.")
+    
 default_args = {
     'owner': 'airflow',
     'start_date': days_ago(1),

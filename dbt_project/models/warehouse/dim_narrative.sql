@@ -1,8 +1,11 @@
-{{ config(materialized='table') }}
+{{ config(
+    materialized='table',
+    post_hook=["ALTER TABLE {{ this }} ADD PRIMARY KEY (narrative_id)"]
+) }}
 
 select distinct
     {{ dbt_utils.generate_surrogate_key(['event_id']) }} as narrative_id,
     event_id as original_event_id,
-    summary as incident_summary
+
+    coalesce(summary, 'No summary available') as incident_summary
 from {{ ref('stg_attacks') }}
-where summary is not null
