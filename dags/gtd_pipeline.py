@@ -136,11 +136,11 @@ def ingest_oecd_property_data(**kwargs):
     # Gunakan if_exists='append' karena tabel sudah dihapus secara manual di atas
     df.to_sql(TABLE_NAME_PROP, engine, if_exists='append', index=False)
     logging.info("Success! Data saved to Postgres.")
-    
+
 default_args = {
     'owner': 'airflow',
     'start_date': days_ago(1),
-    'retries': 1,
+    'retries': 0,
 
     'on_success_callback': audit_success_callback,
     'on_failure_callback': audit_failure_callback

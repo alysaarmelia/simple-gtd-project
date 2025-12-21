@@ -1,7 +1,6 @@
 {{ config(materialized='table') }}
 
 with security_metrics as (
-
     select 
         l.country_name,
         d.year,
@@ -14,12 +13,12 @@ with security_metrics as (
 ),
 
 economic_metrics as (
-
+    -- CHANGED: Reference stg_economy directly instead of fact_economy
     select 
         country_name,
         year,
         property_index
-    from {{ ref('fact_economy') }}
+    from {{ ref('stg_economy') }}
 ),
 
 final as (
@@ -29,7 +28,7 @@ final as (
         s.total_attacks,
         s.total_killed,
         e.property_index,
-        
+
         case
             when s.total_attacks < 5 and e.property_index > 100 then 'Safe Haven (Growth)'
             when s.total_attacks > 50 and e.property_index > 100 then 'High Risk (Bubble)'
