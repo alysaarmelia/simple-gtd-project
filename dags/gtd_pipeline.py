@@ -54,11 +54,16 @@ def load_minio_to_postgres_gtd(**kwargs):
     pg_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     engine = pg_hook.get_sqlalchemy_engine()
     
-    logging.info("Dropping old GTD table...")
+    logging.info("Cleaning up old GTD objects (Aggressive Drop)...")
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+
         conn.execute(f"DROP TABLE IF EXISTS {TABLE_NAME_GTD} CASCADE;")
+        conn.execute(f"DROP VIEW IF EXISTS {TABLE_NAME_GTD} CASCADE;")
+        conn.execute(f"DROP MATERIALIZED VIEW IF EXISTS {TABLE_NAME_GTD} CASCADE;")
+        conn.execute(f"DROP TYPE IF EXISTS {TABLE_NAME_GTD} CASCADE;")
         
     logging.info(f"Loading {len(df)} rows to Postgres...")
+   
     df.to_sql(TABLE_NAME_GTD, engine, if_exists='append', index=False)
     logging.info("GTD Data loaded successfully.")
 
@@ -128,12 +133,10 @@ def ingest_oecd_property_data(**kwargs):
     pg_hook = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
     engine = pg_hook.get_sqlalchemy_engine()
 
-    # --- PERBAIKAN: Gunakan DROP CASCADE untuk menghapus dependensi View dbt ---
     logging.info(f"Dropping table {TABLE_NAME_PROP} with CASCADE if exists...")
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
         conn.execute(f"DROP TABLE IF EXISTS {TABLE_NAME_PROP} CASCADE;")
 
-    # Gunakan if_exists='append' karena tabel sudah dihapus secara manual di atas
     df.to_sql(TABLE_NAME_PROP, engine, if_exists='append', index=False)
     logging.info("Success! Data saved to Postgres.")
 

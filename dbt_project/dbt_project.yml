@@ -4,7 +4,6 @@ config-version: 2
 
 profile: 'gtd_profile'
 
-# dbt where to find files
 model-paths: ["models"]
 seed-paths: ["seeds"]
 test-paths: ["tests"]
@@ -30,4 +29,4 @@ models:
     # 3. Marts Layer: Business Ready Data
     marts:
       +materialized: table
-      +schema: marts
+      +schema: mart

@@ -2,23 +2,26 @@
 
 with security_metrics as (
     select 
-        l.country_name,
+        c.country_name, 
         d.year,
         sum(f.incident_count) as total_attacks,
         sum(f.killed) as total_killed
     from {{ ref('fact_attacks') }} f
     join {{ ref('dim_location') }} l on f.location_id = l.location_id
+ 
+    join {{ ref('dim_country') }} c on l.country_id = c.country_id
     join {{ ref('dim_date') }} d on f.date_id = d.date_id
-    group by l.country_name, d.year
+    group by c.country_name, d.year
 ),
 
 economic_metrics as (
-    -- CHANGED: Reference stg_economy directly instead of fact_economy
+
     select 
-        country_name,
-        year,
-        property_index
-    from {{ ref('stg_economy') }}
+        c.country_name,
+        e.year,
+        e.property_index
+    from {{ ref('dim_economy') }} e
+    join {{ ref('dim_country') }} c on e.country_id = c.country_id
 ),
 
 final as (
