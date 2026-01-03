@@ -22,11 +22,12 @@ countries as (
 )
 
 select
-
     {{ dbt_utils.generate_surrogate_key(['l.country_name', 'l.region_name', 'l.city_name', 'l.latitude', 'l.longitude']) }} as location_id,
     
-
     c.country_id,
+
+    -- [PENTING] Tambahkan kolom ini agar Fact Table bisa membacanya
+    l.country_name,
     
     l.region_name,
     l.city_name,

@@ -17,7 +17,7 @@ with source as (
     select * from {{ ref('stg_attacks') }}
 ),
 
--- 1. Panggil semua tabel Dimensi
+-- 1. PANGGIL SEMUA TABEL DIMENSI
 dim_country as (select country_id, country_name from {{ ref('dim_country') }}),
 dim_economy as (select economy_id, country_id, year from {{ ref('dim_economy') }}),
 dim_date as (select date_id, year, month, day from {{ ref('dim_date') }}),
@@ -30,7 +30,7 @@ dim_narrative as (select narrative_id, original_event_id from {{ ref('dim_narrat
 
 final as (
     select
-        -- 2. Ambil ID dari Tabel Dimensi (BUKAN generate baru)
+        -- 2. AMBIL ID DARI HASIL JOIN (BUKAN GENERATE ULANG)
         d.date_id,
         l.location_id,
         a.attack_id,
@@ -49,9 +49,9 @@ final as (
 
     from source
     
-    -- 3. Lakukan LEFT JOIN ke semua dimensi berdasarkan "Natural Key"
+    -- 3. JOIN KE DIMENSI BERDASARKAN "NATURAL KEY"
     
-    -- Join Location (Composite Key)
+    -- Join Location
     left join dim_location l 
         on source.country_name = l.country_name
         and source.region_name = l.region_name
@@ -65,15 +65,14 @@ final as (
         and source.month = d.month 
         and source.day = d.day
 
-    -- Join Single Key Dimensions
+    -- Join Dimensi Lainnya
     left join dim_attack a on source.attack_type = a.attack_type
     left join dim_target t on source.target_type = t.target_type
     left join dim_perpetrator p on source.group_name = p.group_name
     left join dim_weapon w on source.weapon_type = w.weapon_type
     left join dim_narrative n on source.event_id = n.original_event_id
     
-    -- Join Economy (Via Country yang sudah di-join sebelumnya agak riskan, lebih aman direct join logic atau via dim_country)
-    -- Disini kita join via nama negara agar konsisten
+    -- Join Economy (Via Country agar konsisten)
     left join dim_country c on source.country_name = c.country_name
     left join dim_economy e 
         on c.country_id = e.country_id 
