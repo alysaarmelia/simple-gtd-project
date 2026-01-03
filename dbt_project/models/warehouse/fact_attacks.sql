@@ -17,28 +17,30 @@ with source as (
     select * from {{ ref('stg_attacks') }}
 ),
 
-countries as (
-    select country_id, country_name 
-    from {{ ref('dim_country') }}
-),
-
-economies as (
-    select economy_id, country_id, year 
-    from {{ ref('dim_economy') }}
-),
+-- 1. Panggil semua tabel Dimensi
+dim_country as (select country_id, country_name from {{ ref('dim_country') }}),
+dim_economy as (select economy_id, country_id, year from {{ ref('dim_economy') }}),
+dim_date as (select date_id, year, month, day from {{ ref('dim_date') }}),
+dim_location as (select location_id, country_name, region_name, city_name, latitude, longitude from {{ ref('dim_location') }}),
+dim_attack as (select attack_id, attack_type from {{ ref('dim_attack') }}),
+dim_target as (select target_id, target_type from {{ ref('dim_target') }}),
+dim_perpetrator as (select perpetrator_id, group_name from {{ ref('dim_perpetrator') }}),
+dim_weapon as (select weapon_id, weapon_type from {{ ref('dim_weapon') }}),
+dim_narrative as (select narrative_id, original_event_id from {{ ref('dim_narrative') }}),
 
 final as (
     select
-        {{ dbt_utils.generate_surrogate_key(['source.year', 'source.month', 'source.day']) }} as date_id,
-        {{ dbt_utils.generate_surrogate_key(['source.country_name', 'source.region_name', 'source.city_name', 'source.latitude', 'source.longitude']) }} as location_id,
-        {{ dbt_utils.generate_surrogate_key(['source.attack_type']) }} as attack_id,
-        {{ dbt_utils.generate_surrogate_key(['source.target_type']) }} as target_id,
-        {{ dbt_utils.generate_surrogate_key(['source.group_name']) }} as perpetrator_id,
-        {{ dbt_utils.generate_surrogate_key(['source.weapon_type']) }} as weapon_id,
-        {{ dbt_utils.generate_surrogate_key(['source.event_id']) }} as narrative_id,
-        
+        -- 2. Ambil ID dari Tabel Dimensi (BUKAN generate baru)
+        d.date_id,
+        l.location_id,
+        a.attack_id,
+        t.target_id,
+        p.perpetrator_id,
+        w.weapon_id,
+        n.narrative_id,
         e.economy_id,
 
+        -- Metrics dari Source
         source.event_id,
         source.killed,
         source.wounded,
@@ -46,10 +48,34 @@ final as (
         1 as incident_count
 
     from source
-    left join countries c 
-        on source.country_name = c.country_name
     
-    left join economies e 
+    -- 3. Lakukan LEFT JOIN ke semua dimensi berdasarkan "Natural Key"
+    
+    -- Join Location (Composite Key)
+    left join dim_location l 
+        on source.country_name = l.country_name
+        and source.region_name = l.region_name
+        and source.city_name = l.city_name
+        and source.latitude = l.latitude 
+        and source.longitude = l.longitude
+
+    -- Join Date
+    left join dim_date d 
+        on source.year = d.year 
+        and source.month = d.month 
+        and source.day = d.day
+
+    -- Join Single Key Dimensions
+    left join dim_attack a on source.attack_type = a.attack_type
+    left join dim_target t on source.target_type = t.target_type
+    left join dim_perpetrator p on source.group_name = p.group_name
+    left join dim_weapon w on source.weapon_type = w.weapon_type
+    left join dim_narrative n on source.event_id = n.original_event_id
+    
+    -- Join Economy (Via Country yang sudah di-join sebelumnya agak riskan, lebih aman direct join logic atau via dim_country)
+    -- Disini kita join via nama negara agar konsisten
+    left join dim_country c on source.country_name = c.country_name
+    left join dim_economy e 
         on c.country_id = e.country_id 
         and source.year = e.year
 )
