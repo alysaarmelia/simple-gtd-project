@@ -10,8 +10,7 @@ import warnings
 warnings.filterwarnings("ignore")
 logging.basicConfig(level=logging.INFO)
 
-# ====== CONFIG =======
-DB_CONN = "postgresql+psycopg2://airflow:airflow@postgres:5432/airflow"
+DB_CONN = "postgresql+psycopg2://airflow:airflow@localhost:5432/airflow"
 TARGET_TABLE = "investment_risk_predictions"
 
 
@@ -23,7 +22,6 @@ def run_risk_prediction_comparison():
     try:
         engine = create_engine(DB_CONN)
 
-        # STEP 1: LOAD DATA
         query = """
         SELECT 
             l.country_name,
@@ -41,11 +39,9 @@ def run_risk_prediction_comparison():
             logging.error("No data found from warehouse!")
             return
 
-        # STEP 2: LOOP PER COUNTRY & BATTLE
         countries = df["country_name"].unique()
         final_predictions = []
         
-        # Scoreboard Wins
         wins_xgb = 0
         wins_rf = 0
 
@@ -54,44 +50,35 @@ def run_risk_prediction_comparison():
         for country in countries:
             c_data = df[df["country_name"] == country].copy()
             
-            # Skip jika data terlalu sedikit (<10 tahun)
             if len(c_data) < 10: continue
 
             c_data = c_data.sort_values("year")
             
-            # FEATURE ENGINEERING 
             dfc = c_data.rename(columns={"attack_count": "annual_attacks"}).copy()
 
             dfc["annual_attacks"] = dfc["annual_attacks"].astype(float)
             dfc["year"] = dfc["year"].astype(int)
             
-            # 1. Lags (Masa Lalu)
             dfc["attacks_lag1"] = dfc["annual_attacks"].shift(1)
             dfc["attacks_lag2"] = dfc["annual_attacks"].shift(2)
             dfc["attacks_lag3"] = dfc["annual_attacks"].shift(3)
             
-            # 2. Rolling Stats 
             dfc["mean_3y"] = dfc["annual_attacks"].rolling(3).mean()
             dfc["std_3y"] = dfc["annual_attacks"].rolling(3).std()
             
-            # 3. Trends (Momentum)
             dfc["trend_1y"] = dfc["annual_attacks"].shift(1) - dfc["annual_attacks"].shift(2)
             
-            # 4. Time Encoding
             dfc["year_scaled"] = (dfc["year"] - dfc["year"].min()) / (dfc["year"].max() - dfc["year"].min())
 
-            # Hapus NaN 
             dfc = dfc.dropna()
             if len(dfc) < 10: continue
 
             features = ["attacks_lag1", "attacks_lag2", "attacks_lag3", "mean_3y", "std_3y", "trend_1y", "year_scaled"]
             
-            # --- SPLIT TRAIN / TEST ---
             n = len(dfc)
             train_size = int(n * 0.8)
             
             X = dfc[features]
-            # Log Transform
             y = np.log1p(dfc["annual_attacks"].values) 
             
             X_train, X_test = X.iloc[:train_size], X.iloc[train_size:]
@@ -100,8 +87,6 @@ def run_risk_prediction_comparison():
             if len(X_test) < 1: continue
 
             y_test_real = np.expm1(y_test)
-
-            # ROUND 1: XGBOOST 
 
             model_xgb = XGBRegressor(
                 n_estimators=1000,      
@@ -118,7 +103,6 @@ def run_risk_prediction_comparison():
             mape_xgb = np.mean(np.abs((y_test_real - pred_xgb) / (y_test_real + 1))) * 100
             acc_xgb = max(0, 100 - mape_xgb)
 
-            # ROUND 2: RANDOM FOREST 
             model_rf = RandomForestRegressor(
                 n_estimators=500,       
                 max_depth=5,            
@@ -132,7 +116,6 @@ def run_risk_prediction_comparison():
             mape_rf = np.mean(np.abs((y_test_real - pred_rf) / (y_test_real + 1))) * 100
             acc_rf = max(0, 100 - mape_rf)
 
-            # TENTUKAN PEMENANG
             if acc_xgb >= acc_rf:
                 winner_model = "XGBoost"
                 winner_acc = acc_xgb
@@ -144,13 +127,11 @@ def run_risk_prediction_comparison():
                 final_model = model_rf
                 wins_rf += 1
 
-            # FINAL FORECAST
             final_model.fit(X, y)
             
             next_year = int(dfc["year"].max()) + 1
             last_row = dfc.iloc[-1:].copy()
             
-            # Prdiksi fitur tahun depan
             next_feats_dict = {
                 "attacks_lag1": last_row["annual_attacks"],         
                 "attacks_lag2": last_row["attacks_lag1"],
@@ -162,7 +143,6 @@ def run_risk_prediction_comparison():
             }
             next_feats = pd.DataFrame([next_feats_dict])
             
-            # Memastikan urutan kolom sama dan tipe datanya
             next_feats = next_feats[features].astype(float)
             
             pred_log = final_model.predict(next_feats)[0]
@@ -182,7 +162,6 @@ def run_risk_prediction_comparison():
                 "model_used": winner_model
             })
 
-        # STEP 3: SUMMARY & SAVE
         if final_predictions:
             df_save = pd.DataFrame(final_predictions)
             
